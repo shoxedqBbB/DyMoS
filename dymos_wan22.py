@@ -10,6 +10,7 @@ warnings.filterwarnings('ignore')
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from PIL import Image
 
 import wan
@@ -93,7 +94,7 @@ def _patched_self_attn(state, attn_module):
 
         if USE_FLEX:
             def f0_mod(score, b_, h, qi, ki):
-                return torch.where(ki < HW, score - gamma_v, score)
+                return torch.where((qi >= HW) & (ki < HW), score - gamma_v, score)
             target_dtype = v_t.dtype
             q_t_ = q_t.to(target_dtype) if q_t.dtype != target_dtype else q_t
             k_t_ = k_t.to(target_dtype) if k_t.dtype != target_dtype else k_t
@@ -102,9 +103,10 @@ def _patched_self_attn(state, attn_module):
             mask = torch.zeros(s, device=x.device, dtype=q_t.dtype)
             mask[:HW] = -gamma_v
             attn_mask = mask.view(1, 1, 1, s)
-            out = torch.nn.functional.scaled_dot_product_attention(
-                q_t, k_t, v_t, attn_mask=attn_mask)
-
+            out_f0   = F.scaled_dot_product_attention(q_t[:, :, :HW], k_t, v_t)
+            out_rest = F.scaled_dot_product_attention(q_t[:, :, HW:], k_t, v_t, attn_mask=attn_mask)
+            out = torch.cat([out_f0, out_rest], dim=2)
+            
         out = out.transpose(1, 2).contiguous().flatten(2)
         return attn_module.o(out)
 
