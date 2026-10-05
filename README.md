@@ -1,10 +1,10 @@
 # [NeurIPS 2026] Rebalancing Reference Frame Dominance to Improve Motion in Image-to-Video Models
 
-[Wooseok Jeon](https://vvsjeon.github.io)<sup>1\*</sup>, [Seungho Park](https://sh0xed98b8.github.io)<sup>1\*</sup>, [Seunghyun Shin](https://www.seunghyunshin.com)<sup>2</sup>, [Sangeyl Lee](https://scholar.google.com/citations?user=gA4sNvcAAAAJ)<sup>1</sup>, [Hyeonho Jeong](https://hyeonho99.github.io)<sup>3</sup>, [Hae-Gon Jeon](https://sites.google.com/site/hgjeoncv/home)<sup>1</sup>
+[Wooseok Jeon](https://vvsjeon.github.io)<sup>1\*</sup>, [Seungho Park](https://shoxedqbbb.github.io/)<sup>1\*</sup>, [Seunghyun Shin](https://www.seunghyunshin.com)<sup>2</sup>, [Sangeyl Lee](https://scholar.google.com/citations?user=gA4sNvcAAAAJ)<sup>1</sup>, [Hyeonho Jeong](https://hyeonho99.github.io)<sup>3</sup>, [Hae-Gon Jeon](https://sites.google.com/site/hgjeoncv/home)<sup>1</sup>
 
 <sup>1</sup>Yonsei University &nbsp;&nbsp; <sup>2</sup>GIST &nbsp;&nbsp; <sup>3</sup>Adobe Research
 
-[![Project Website](https://img.shields.io/badge/Project-Website-blue)](https://sh0xed98b8.github.io/DyMoS/) [![arXiv](https://img.shields.io/badge/arXiv-2605.19398-b31b1b.svg)](https://arxiv.org/abs/2605.19398)
+[![Project Website](https://img.shields.io/badge/Project-Website-blue)](https://shoxedqbbb.github.io/DyMoS/) [![arXiv](https://img.shields.io/badge/arXiv-2605.19398-b31b1b.svg)](https://arxiv.org/abs/2605.19398)
 
 ![DyMoS teaser](dymos_teaser_hires.gif)
 
