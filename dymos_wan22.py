@@ -140,8 +140,8 @@ def _apply_patches(pipeline, state):
 
 def _parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--ckpt_dir", type=str, required=True)
-    p.add_argument("--size", type=str, default="1280*720",
+    p.add_argument("--ckpt_dir", type=str, default="./Wan2.2-I2V-A14B")
+    p.add_argument("--size", type=str, default="832*480",
                    choices=list(SUPPORTED_SIZES[TASK]))
     p.add_argument("--frame_num", type=int, default=None)
     p.add_argument("--image", type=str, default=None)
@@ -165,7 +165,7 @@ def _parse_args():
 
     p.add_argument("--offload_model", type=str2bool, default=None)
     p.add_argument("--t5_cpu", action="store_true", default=False)
-    p.add_argument("--convert_model_dtype", action="store_true", default=False)
+    p.add_argument("--convert_model_dtype", type=str2bool, nargs='?', const=True, default=True)
     p.add_argument("--ulysses_size", type=int, default=1)
     p.add_argument("--t5_fsdp", action="store_true", default=False)
     p.add_argument("--dit_fsdp", action="store_true", default=False)
