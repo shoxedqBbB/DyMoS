@@ -4,6 +4,7 @@ if 'PYTORCH_CUDA_ALLOC_CONF' not in os.environ:
 
 import argparse
 import copy
+import glob
 import warnings
 from datetime import datetime
 
@@ -43,19 +44,6 @@ class _State:
         )
 
 
-def _stepped_forward(state, pipe, original):
-    def wrapper(*args, **kwargs):
-        state.do_cfg = pipe.do_classifier_free_guidance
-        state.in_dit = True
-        try:
-            out = original(*args, **kwargs)
-        finally:
-            state.in_dit = False
-        state.forward_idx += 1
-        return out
-    return wrapper
-
-
 try:
     from torch.nn.attention.flex_attention import flex_attention as _flex_attention
     _flex_attention = torch.compile(_flex_attention, dynamic=False)
@@ -87,27 +75,20 @@ def _patched_parallel_attention(state, original):
         b, _, s, _ = query.shape
         c0 = b // 2 if state.do_cfg else 0
         gamma_v = float(state.gamma)
-        if text_mask is not None:
-            key_valid = F.pad(text_mask, (L_img, 0), value=1).bool()
-        else:
-            key_valid = torch.ones(b, s, dtype=torch.bool, device=query.device)
 
+        # Every query outside frame 0 (video and text) is biased on frame-0 keys.
         if USE_FLEX:
             def f0_mod(score, b_, h, qi, ki):
-                hit = (b_ >= c0) & (qi >= HW) & (qi < L_img) & (ki < HW)
-                score = torch.where(hit, score - gamma_v, score)
-                return torch.where(key_valid[b_, ki], score, float('-inf'))
+                hit = (b_ >= c0) & (qi >= HW) & (ki < HW)
+                return torch.where(hit, score - gamma_v, score)
             td = value.dtype
             out = _flex_attention(query.to(td), key.to(td), value, score_mod=f0_mod)
         else:
-            key_bias = torch.zeros(b, 1, 1, s, device=query.device, dtype=query.dtype)
-            key_bias.masked_fill_(~key_valid.view(b, 1, 1, s), float('-inf'))
-            f0_bias = key_bias.clone()
-            f0_bias[c0:, :, :, :HW] -= gamma_v
+            f0_bias = torch.zeros(b, 1, 1, s, device=query.device, dtype=query.dtype)
+            f0_bias[c0:, :, :, :HW] = -gamma_v
             out = torch.cat([
-                F.scaled_dot_product_attention(query[:, :, :HW], key, value, attn_mask=key_bias),
-                F.scaled_dot_product_attention(query[:, :, HW:L_img], key, value, attn_mask=f0_bias),
-                F.scaled_dot_product_attention(query[:, :, L_img:], key, value, attn_mask=key_bias),
+                F.scaled_dot_product_attention(query[:, :, :HW], key, value),
+                F.scaled_dot_product_attention(query[:, :, HW:], key, value, attn_mask=f0_bias),
             ], dim=2)
 
         out = out.transpose(1, 2)
@@ -119,12 +100,22 @@ def _apply_patches(pipe, state):
     orig_attn = hv_transformer.parallel_attention
     hv_transformer.parallel_attention = _patched_parallel_attention(state, orig_attn)
     dit = pipe.transformer
-    orig_forward = dit.forward
-    dit.forward = _stepped_forward(state, pipe, dit.forward)
+
+    # nn hooks survive diffusers group offloading, which resets module.forward.
+    def pre(module, args):
+        state.do_cfg = pipe.do_classifier_free_guidance
+        state.in_dit = True
+
+    def post(module, args, output):
+        state.in_dit = False
+        state.forward_idx += 1
+
+    hooks = [dit.register_forward_pre_hook(pre), dit.register_forward_hook(post)]
 
     def restore():
         hv_transformer.parallel_attention = orig_attn
-        dit.forward = orig_forward
+        for h in hooks:
+            h.remove()
     return restore
 
 
@@ -165,7 +156,7 @@ def _parse_args():
     p.add_argument("--cfg_distilled", type=_str2bool, nargs='?', const=True, default=False)
     p.add_argument("--enable_step_distill", type=_str2bool, nargs='?', const=True, default=False)
     p.add_argument("--sparse_attn", type=_str2bool, nargs='?', const=True, default=False)
-    p.add_argument("--use_sageattn", type=_str2bool, nargs='?', const=True, default=False)
+    p.add_argument("--use_sageattn", type=_str2bool, nargs='?', const=True, default=True)
     p.add_argument("--sage_blocks_range", type=str, default="0-53")
     p.add_argument("--rewrite", type=_str2bool, nargs='?', const=True, default=False)
     p.add_argument("--sr", type=_str2bool, nargs='?', const=True, default=False)
@@ -266,7 +257,7 @@ def main():
     ts = datetime.now().strftime("%m%d%H%M")
     try:
         for j, (gidx, img_path, prompt) in enumerate(jobs):
-            if not os.path.exists(img_path):
+            if not (img_path and os.path.exists(img_path)):
                 loguru.logger.warning(f"[skip #{gidx}] no image: {img_path}")
                 continue
             stub = "_".join(prompt.split())
@@ -275,7 +266,8 @@ def main():
                 save_path = args.save_file
             else:
                 save_path = os.path.join(batch_out_dir, f"{ts}_{gidx:03d}_{stub}.mp4")
-            if os.path.exists(save_path):
+            if os.path.exists(save_path) or glob.glob(
+                    os.path.join(batch_out_dir, f"*_{gidx:03d}_{stub}.mp4")):
                 continue
             loguru.logger.info(f"[{j+1}/{len(jobs)}] (#{gidx}) {prompt}")
             state.forward_idx = 0
@@ -287,7 +279,7 @@ def main():
                 sr_num_inference_steps=None,
                 video_length=args.video_length,
                 negative_prompt=args.negative_prompt,
-                seed=args.seed + gidx,
+                seed=args.seed,
                 output_type="pt",
                 prompt_rewrite=args.rewrite,
                 return_pre_sr_video=False,
